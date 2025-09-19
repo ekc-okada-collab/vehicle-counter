@@ -150,3 +150,7 @@ Desktop.ini
 # PyCharm
 .idea/
 *.iml
+
+# other
+/videos/*.mp4
+/videos/*.avi
