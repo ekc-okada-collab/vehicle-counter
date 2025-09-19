@@ -112,6 +112,9 @@ def main():
             # まれに追跡が返らないフレームがある
             dets = []
 
+        # 各IDの前回中心座標を保持
+        center_prev = defaultdict(lambda: None)
+
         # IDごとにゲート通過判定
         for (tid, cls, confb, (bx1,by1,bx2,by2)) in dets:
             cx = int((bx1+bx2)/2); cy = int((by1+by2)/2)
@@ -120,29 +123,50 @@ def main():
             inside = (y1 <= cy <= y2) and (x1 <= cx <= x2)
             was_inside = inside_prev[tid]
 
-            # 外→内→外 を 1カウントとみなすシンプル判定
+            # 通過方向判定用
+            prev_center = center_prev[tid]
+            direction = ""
             crossed = False
             if was_inside and not inside and tid not in counted:
                 crossed = True
                 counted.add(tid)
                 total += 1
+                if prev_center is not None:
+                    prev_cx, prev_cy = prev_center
+                    # ゲートの上下方向で判定
+                    if prev_cy < y1 and cy > y2:
+                        direction = "down"
+                    elif prev_cy > y2 and cy < y1:
+                        direction = "up"
+                    elif prev_cx < x1 and cx > x2:
+                        direction = "right"
+                    elif prev_cx > x2 and cx < x1:
+                        direction = "left"
+                    else:
+                        # 単純にy方向で判定
+                        direction = "down" if cy > prev_cy else "up"
 
             inside_prev[tid] = inside
+            center_prev[tid] = (cx, cy)
 
             # 可視化
             color = (0,255,0) if not tid in counted else (128,128,128)
             cv2.rectangle(frame, (int(bx1),int(by1)), (int(bx2),int(by2)), color, 2)
-            put(frame, f"ID:{tid} C{cls} {confb:.2f}", (int(bx1), max(15,int(by1)-6)), 0.55, (200,255,200))
+            label = f"ID:{tid} C{cls} {confb:.2f} D{direction}"
+            if crossed and direction:
+                label += f" {direction}"
+            put(frame, label, (int(bx1), max(15,int(by1)-6)), 0.55, (200,255,200))
             cv2.circle(frame, (cx,cy), 3, (255,255,255), -1)
 
             if csvw:
-                csvw.writerow([f"{now:.3f}", tid, cls, cx, cy, int(crossed)])
+                csvw.writerow([f"{now:.3f}", tid, cls, cx, cy, int(crossed), direction])
 
         # TTLで古いIDを破棄
         to_del = [tid for tid,t in last_seen.items() if now - t > TTL_SEC]
         for tid in to_del:
             last_seen.pop(tid, None)
             inside_prev.pop(tid, None)
+            center_prev.pop(tid, None)
             # counted は保持（重複カウント防止）
 
         # HUD
