@@ -154,3 +154,7 @@ Desktop.ini
 # other
 /videos/*.mp4
 /videos/*.avi
+/models/*.h5
+/models/*.pt
+*.pt
+*.csv
