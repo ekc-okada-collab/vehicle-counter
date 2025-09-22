@@ -9,7 +9,7 @@ from collections import defaultdict
 
 # ========= 設定（必要に応じて変更） =========
 SOURCE = "./videos/test video_2.mp4"   # カメラなら 0 / ファイルパス / RTSP など
-CLASSES = [2,5,7]   # COCO:人=0, 自転車=1, 車=2, バイク=3, バス=5, トラック=7
+CLASSES = [0,1,2,3,5,7]   # COCO:人=0, 自転車=1, 車=2, バイク=3, バス=5, トラック=7
 MODEL = "./models/yolo11n.pt"        # 初回実行で自動DL
 USE_GPU = False             # RTXがあれば True（Torch+CUDA必須）
 IMG_SIZE = 960              # CPU時は 960→832→640 で調整
@@ -28,7 +28,6 @@ def main():
     global IMG_SIZE
     model = YOLO(MODEL)
     device = 0 if USE_GPU else "cpu"
-    # device = "cpu"
 
     cap = cv2.VideoCapture(SOURCE if isinstance(SOURCE, (str,int)) else 0)
     if not cap.isOpened():
@@ -44,13 +43,17 @@ def main():
     # 「横いっぱいの水平ゲート」が初期状態
     # gate = [0, int(h*0.4), w, int(h*0.6)]
     # 任意の幅の水平ゲート
-    gate = [int(w*0.5), int(h*0.6), int(w*0.8), int(h*0.8)]
+    gate = [int(w*0.5), int(h*0.6), int(w*0.9), int(h*0.75)]
+    gate_center_xy = [ int((gate[0]+gate[2])/2),int((gate[1]+gate[3])/2)]
 
     # ID毎の状態
     counted = set()                # 既にカウントしたID
     last_seen = defaultdict(lambda: 0.0)  # 最終検出時刻
     inside_prev = defaultdict(lambda: False)  # 前フレームでゲート内だったか
-    total = 0
+    total_1_class_counts = [0,0,0,0,0,0,0,0,0,0]  # クラスID毎のカウント数
+    total_1 = 0
+    total_2_class_counts = [0,0,0,0,0,0,0,0,0,0]  # クラスID毎のカウント数
+    total_2 = 0
 
     # CSV
     csvw = None
@@ -123,28 +126,44 @@ def main():
             inside = (y1 <= cy <= y2) and (x1 <= cx <= x2)
             was_inside = inside_prev[tid]
 
-            # 通過方向判定用
-            prev_center = center_prev[tid]
-            direction = ""
+            # 通過判定用
             crossed = False
             if was_inside and not inside and tid not in counted:
                 crossed = True
                 counted.add(tid)
-                total += 1
-                if prev_center is not None:
-                    prev_cx, prev_cy = prev_center
-                    # ゲートの上下方向で判定
-                    if prev_cy < y1 and cy > y2:
-                        direction = "down"
-                    elif prev_cy > y2 and cy < y1:
-                        direction = "up"
-                    elif prev_cx < x1 and cx > x2:
-                        direction = "right"
-                    elif prev_cx > x2 and cx < x1:
-                        direction = "left"
-                    else:
-                        # 単純にy方向で判定
-                        direction = "down" if cy > prev_cy else "up"
+                if cy < gate_center_xy[1]:
+                    if cls == 0:
+                        total_1_class_counts[0] += 1
+                    elif cls == 1:
+                        total_1_class_counts[1] += 1
+                    elif cls == 2:
+                        total_1_class_counts[2] += 1
+                    elif cls == 3:
+                        total_1_class_counts[3] += 1
+                    elif cls == 5:
+                        total_1_class_counts[5] += 1
+                    elif cls == 7:
+                        total_1_class_counts[7] += 1
+                    total_1 += 1
+                    # COCO:人=0, 自転車=1, 車=2, バイク=3, バス=5, トラック=7
+                    print(f"通過した数(↑)[人:{total_1_class_counts[0]}, 自転車:{total_1_class_counts[1]}, 車:{total_1_class_counts[2]}, バス:{total_1_class_counts[5]}, トラック:{total_1_class_counts[7]}, バイク{total_1_class_counts[3]}]")
+                if cy > gate_center_xy[1]:
+                    if cls == 0:
+                        total_2_class_counts[0] += 1
+                    elif cls == 1:
+                        total_2_class_counts[1] += 1
+                    elif cls == 2:
+                        total_2_class_counts[2] += 1
+                    elif cls == 3:
+                        total_2_class_counts[3] += 1
+                    elif cls == 5:
+                        total_2_class_counts[5] += 1
+                    elif cls == 7:
+                        total_2_class_counts[7] += 1
+                    total_2 += 1
+                    # COCO:人=0, 自転車=1, 車=2, バイク=3, バス=5, トラック=7
+                    print(f"通過した数(↓)[人:{total_2_class_counts[0]}, 自転車:{total_2_class_counts[1]}, 車:{total_2_class_counts[2]}, バス:{total_2_class_counts[5]}, トラック:{total_2_class_counts[7]}, バイク{total_2_class_counts[3]}]")
+
 
             inside_prev[tid] = inside
             center_prev[tid] = (cx, cy)
@@ -152,14 +171,14 @@ def main():
             # 可視化
             color = (0,255,0) if not tid in counted else (128,128,128)
             cv2.rectangle(frame, (int(bx1),int(by1)), (int(bx2),int(by2)), color, 2)
-            label = f"ID:{tid} C{cls} {confb:.2f} D{direction}"
-            if crossed and direction:
-                label += f" {direction}"
+            label = f"ID:{tid} C{cls} {confb:.2f}"
+            # if crossed and direction:
+            #     label += f" {direction}"
             put(frame, label, (int(bx1), max(15,int(by1)-6)), 0.55, (200,255,200))
             cv2.circle(frame, (cx,cy), 3, (255,255,255), -1)
 
             if csvw:
-                csvw.writerow([f"{now:.3f}", tid, cls, cx, cy, int(crossed), direction])
+                csvw.writerow([f"{now:.3f}", tid, cls, cx, cy, int(crossed)])
 
         # TTLで古いIDを破棄
         to_del = [tid for tid,t in last_seen.items() if now - t > TTL_SEC]
@@ -170,9 +189,10 @@ def main():
             # counted は保持（重複カウント防止）
 
         # HUD
-        put(frame, f"TOTAL: {total}", (10, 24), 0.9, (50,255,50), 2)
+        put(frame, f"Direction1 [ Walking:{total_1_class_counts[0]}, Bike:{total_1_class_counts[1]}, Car:{total_1_class_counts[2]}, Bus:{total_1_class_counts[5]}, Track:{total_1_class_counts[7]}, MotorBike:{total_1_class_counts[3]} ]", (10, 24), 0.9, (50,255,50), 2)
+        put(frame, f"Direction2 [ Walking:{total_2_class_counts[0]}, Bike:{total_2_class_counts[1]}, Car:{total_2_class_counts[2]}, Bus:{total_2_class_counts[5]}, Track:{total_2_class_counts[7]}, MotorBike:{total_2_class_counts[3]} ]", (10, 52), 0.9, (50,255,50), 2)
         put(frame, f"FPS: {fps:5.1f}  size:{IMG_SIZE}  conf:{conf:.2f}  device:{'cuda' if device==0 else 'cpu'}",
-            (10, 50), 0.7, (200,200,255))
+            (10, 80), 0.7, (200,200,255))
 
         for i, line in enumerate(help_lines):
             put(frame, line, (10, h-10 - 20*(len(help_lines)-1-i)), 0.55, (220,220,220))
@@ -194,7 +214,7 @@ def main():
             except ValueError:
                 IMG_SIZE = 960
         elif k == ord('r'):   # カウンタ/状態リセット
-            total = 0; counted.clear(); inside_prev.clear(); last_seen.clear()
+            total_1 = 0; counted.clear(); inside_prev.clear(); last_seen.clear()
         elif k == ord('w'):  # ↑
             gate[1] = max(0, gate[1]-5); gate[3] = max(gate[1]+10, gate[3]-5)
         elif k == ord('s'):  # ↓

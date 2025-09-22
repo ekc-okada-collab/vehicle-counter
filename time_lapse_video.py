@@ -1,9 +1,13 @@
-import cv2
+import os
 import time
 import datetime
+from PyQt6.QtCore import QSize, pyqtSignal, pyqtSlot, QThread
+from PyQt6.QtWidgets import (QApplication, QMainWindow, QPushButton, QLabel, QVBoxLayout, QWidget, QFileDialog)
+from PyQt6.QtGui import QImage, QPixmap
 import numpy as np
+import cv2
 from PIL import Image, ImageDraw, ImageFont
-import os
+
 
 # フォントのパス（システムに応じて変更してください）
 FONT_PATH = f"Fonts/msgothic.ttc"
