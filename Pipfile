@@ -14,5 +14,9 @@ lap = "*"
 
 [dev-packages]
 
+[scripts]
+start = "python time_lapse_video.py"
+start2 = "python test.py"
+
 [requires]
 python_version = "3.10"

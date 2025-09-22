@@ -158,3 +158,8 @@ Desktop.ini
 /models/*.pt
 *.pt
 *.csv
+/time_lapse_videos/*.mp4
+/time_lapse_videos/*.avi
+/Fonts/msgothic.ttc
+/output_imgs/*.jpg
+/output_imgs/*.png
