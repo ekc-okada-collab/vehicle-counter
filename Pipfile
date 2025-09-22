@@ -11,6 +11,7 @@ torch = "*"
 torchvision = "*"
 torchaudio = "*"
 lap = "*"
+pyqt6 = "*"
 
 [dev-packages]
 
