@@ -16,7 +16,7 @@ pyqt6 = "*"
 [dev-packages]
 
 [scripts]
-start = "python time_lapse_video.py"
+start = "python webCam_recorder.py"
 start2 = "python test.py"
 
 [requires]
