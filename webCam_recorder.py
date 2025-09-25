@@ -1,168 +1,204 @@
-import os
-import time
-import datetime
-from PyQt6.QtCore import QSize, pyqtSignal, pyqtSlot, QThread
-from PyQt6.QtWidgets import (QApplication, QMainWindow, QPushButton, QLabel, QVBoxLayout, QWidget, QFileDialog)
-from PyQt6.QtGui import QImage, QPixmap
-import numpy as np
+import sys
+
+from PyQt6 import QtGui
+from PyQt6.QtWidgets import QWidget, QApplication, QLabel, QVBoxLayout,QHBoxLayout, QMainWindow, QComboBox, QPushButton, QSizePolicy
+from PyQt6.QtCore import QTimer, Qt
+from PyQt6.QtGui import QPixmap, QImage
+
+
+from PyQt6.QtCore import pyqtSignal, pyqtSlot, QThread
+
 import cv2
-from PIL import Image, ImageDraw, ImageFont
+import numpy as np
+
+# class VideoThread(QThread):
+#     # シグナル設定
+#     change_pixmap_signal = pyqtSignal(np.ndarray)
+
+#     def __init__(self):
+#         super().__init__()
+#         self._run_flag = True
+
+#     # QThreadのrunメソッドを定義
+#     def run(self):
+#         cap = cv2.VideoCapture(0)
+#         while self._run_flag:
+#             ret, cv_img = cap.read() # 1フレーム取得
+#             # 新たなフレームを取得できたら
+#             # シグナル発信(cv_imgオブジェクトを発信)            
+#             if ret:
+#                 self.change_pixmap_signal.emit(cv_img)
+
+#         # videoCaptureのリリース処理
+#         cap.release()
+   
+#     # スレッドが終了するまでwaitをかける
+#     def stop(self):
+#         self._run_flag = False
+#         self.wait()
 
 
-# フォントのパス（システムに応じて変更してください）
-FONT_PATH = f"Fonts/msgothic.ttc"
+# class App(QWidget):
 
+#     def __init__(self):
+#         super().__init__()
 
-class VideoThread(QThread):
-    change_pixmap_signal = pyqtSignal(np.ndarray)
-    playing = True
+#         self.image_label = QLabel(self)
+        
+#         # vboxにQLabelをセット
+#         vbox = QVBoxLayout()
+#         vbox.addWidget(self.image_label)
 
-    def run(self):
-        cap = cv2.VideoCapture(0)
-        while self.playing:
-            ret, frame = cap.read()
-            if ret:
-                h, w, ch = frame.shape
-                bytes_per_line = ch * w
-                image = QImage(frame.data, w, h, bytes_per_line, QImage.Format.Format_BGR888)
-                self.change_pixmap_signal.emit(image)
-        cap.release()
+#         # vboxをレイアウトとして配置
+#         self.setLayout(vbox)
+
+#         # ビデオキャプチャ用のスレッドオブジェクトを生成
+#         self.thread = VideoThread()
+#         # ビデオスレッド内のchange_pixmap_signalオブジェクトのシグナルに対するslot
+#         self.thread.change_pixmap_signal.connect(self.update_image)
+
+#         self.thread.start() # スレッドを起動
+
+#     def get_available_cameras(self):
+#             """利用可能なカメラを検出"""
+#             cameras = []
+#             for i in range(10):  # 最大10台までチェック
+#                 cap = cv2.VideoCapture(i)
+#                 if cap.isOpened():
+#                     cameras.append(f"カメラ {i}")
+#                     cap.release()
+#             return cameras
     
-    def stop(self):
-        self.playing = False
-        self.wait()
 
-class Window(QWidget):
 
-    video_size = QSize(1280, 720)
 
-    def __init__(self, fps=10, section_time=60, camera_pixel=[1280, 720]):
+#     # 終了時にスレッドがシングルになるようにする
+#     def closeEvent(self,event):
+#         self.thread.stop()
+#         event.accept()
+
+
+#     @pyqtSlot(np.ndarray)
+#     def update_image(self, cv_img):
+#         #img = cv2.cvtColor(cv_img, cv2.COLOR_BGR2RGB)
+#         # QT側でチャネル順BGRを指定
+#         qimg = QtGui.QImage(cv_img.tobytes(),cv_img.shape[1],cv_img.shape[0],cv_img.strides[0],QtGui.QImage.Format.Format_BGR888)
+#         qpix = QPixmap.fromImage(qimg)
+#         self.image_label.setPixmap(qpix)
+
+# if __name__ == "__main__":
+#    app = QApplication([])
+#    window = App()
+#    window.show()
+#    app.exec()
+
+class CameraApp(QMainWindow):
+    def __init__(self):
         super().__init__()
-        self.initUI()
-        self.thread = VideoThread()
-        self.thread.change_pixmap_signal.connect(self.update_image)
-        self.thread.start()
-        self._run_flag = True
-        self.fps = fps
-        self.section_time = section_time
-        self.camera_pixel = camera_pixel
+        self.setWindowTitle("アプリ")
+        self.setGeometry(100, 100, 800, 600)
+
+        # メインウィジェットとレイアウト
+        self.central_widget = QWidget()
+        self.setCentralWidget(self.central_widget)
+        self.v_layout = QVBoxLayout(self.central_widget)
+
+        # 1行目の水平レイアウト
+        self.horizontalLayout_1 = QHBoxLayout()
+        self.horizontalLayout_1.setObjectName("horizontalLayout_1")
+        # カメラ選択用のコンボボックス
+        self.camera_selector = QComboBox()
+        self.horizontalLayout_1.addWidget(self.camera_selector)
+        # 開始ボタン
+        self.connect_camera_button = QPushButton("カメラ接続")
+        self.horizontalLayout_1.addWidget(self.connect_camera_button)
+        self.v_layout.addLayout(self.horizontalLayout_1)
+        # self.horizontalLayout_1.addWidget(self.start_button)
+        # カメラ映像表示用ラベル
+        self.video_label = QLabel()
+        self.v_layout.addWidget(self.video_label)
+        self.video_label.setFixedSize(640, 480)
+        self.video_label.setStyleSheet("background-color: black;")
+        self.video_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.video_label.setText("カメラ映像")
+        self.video_label.setObjectName("video_label")
+        self.video_label.setScaledContents(True)
+        self.video_label.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Ignored)
+
+        # 録画開始ボタン
+        self.record_start_button = QPushButton("録画開始")
+        self.record_start_button.setObjectName("record_start_button")
+        self.v_layout.addWidget(self.record_start_button)
+        self.record_start_button.setEnabled(False)  # 録画ボタンは初期状態で無効
+
+        # 録画停止ボタン
+        self.record_stop_button = QPushButton("録画停止")
+        self.record_stop_button.setObjectName("record_stop_button")
+        self.v_layout.addWidget(self.record_stop_button)
+        self.record_stop_button.setEnabled(False)  # 停止ボタンは初期状態で無効
+
+        # カメラリストを取得
+        self.available_cameras = self.get_available_cameras()
+        self.camera_selector.addItems(self.available_cameras)
+
+        # OpenCV関連
+        self.capture = None
+        self.timer = QTimer()
+        self.timer.timeout.connect(self.update_frame)
+
+        self.recording = False  # 録画状態フラグ
+        self.video_writer = None  # 動画ライターオブジェクト
+
+        # イベント接続
+        self.connect_camera_button.clicked.connect(self.start_camera)
+        self.record_start_button.clicked.connect(self.record_video)
+        self.record_stop_button.clicked.connect(self.stop_recording)
+
+    def get_available_cameras(self):
+        """利用可能なカメラを検出"""
+        cameras = []
+        for i in range(10):  # 最大10台までチェック
+            cap = cv2.VideoCapture(i)
+            if cap.isOpened():
+                cameras.append(f"カメラ {i}")
+                cap.release()
+        return cameras
+
+    def start_camera(self):
+        """選択したカメラを開始"""
+        camera_index = self.camera_selector.currentIndex()
+        if self.capture:
+            self.capture.release()
+        self.capture = cv2.VideoCapture(camera_index)
+        self.timer.start(30)  # 30msごとにフレーム更新
+
+    def update_frame(self):
+        """カメラフレームを更新"""
+        ret, frame = self.capture.read()
+        if ret:
+            # OpenCVのBGR画像をRGBに変換
+            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+            height, width, channel = frame.shape
+            step = channel * width
+            q_image = QImage(frame.data, width, height, step, QImage.Format.Format_RGB888)
+            self.video_label.setPixmap(QPixmap.fromImage(q_image))
+
+    def record_video(self):
+        
+        print("recording...")
     
-    def initUI(self):
-        self.setWindowTitle("WebCam Recorder")
-        self.image_label = QLabel(self)
-        self.image_label.resize(self.video_size)
-        self.btn_start = QPushButton("Start Recording")
-        self.btn_start.clicked.connect(self.start_recording)
-        self.btn_stop = QPushButton("Stop Recording")
-        self.btn_stop.clicked.connect(self.stop_recording)
-        vbox = QVBoxLayout()
-        vbox.addWidget(self.image_label)
-        vbox.addWidget(self.btn_start)
-        vbox.addWidget(self.btn_stop)
-        self.setLayout(vbox)
-        self.resize(self.video_size.width(), self.video_size.height() + 100)
-        self.show()
+    def stop_recording(self):
+        print("stopped.")
 
     def closeEvent(self, event):
-        self.thread.stop()
-        event.accept()
-    
-    @pyqtSlot(QImage)
-    def update_image(self, cv_img):
-        self.image_label.setPixmap(QPixmap.fromImage(cv_img).scaled(self.video_size))
-
-    def start_recording(self):
-        print("Start Recording")
-
-    def stop_recording(self):
-        print("Stop Recording")
-
-
-def capture_time_lapse(output_dir, fps=10, section_time=60, camera_pixel=[1280, 720]):
-    # Webカメラを開く
-    cap = cv2.VideoCapture(0)
-    # カメラの解像度を設定
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, camera_pixel[0])
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, camera_pixel[1])
-
-    # 設定が反映されたか確認
-    actual_width = cap.get(cv2.CAP_PROP_FRAME_WIDTH)
-    actual_height = cap.get(cv2.CAP_PROP_FRAME_HEIGHT)
-    print(f"カメラ解像度: {actual_width}x{actual_height}")
-
-    if not cap.isOpened():
-        print("カメラを開けません")
-        return
-    os.makedirs(output_dir, exist_ok=True)
-    
-    file_no = 1
-    section_start_time = time.time()
-
-    interval = 1.0 / fps  # キャプチャ間隔（秒）
-    last_capture_time = time.time()
-
-    # 録画ファイルの設定
-    output_file = f"video_{file_no}.mp4"
-    outputpath = os.path.join(output_dir, output_file)
-    fourcc = cv2.VideoWriter_fourcc('m', 'p', '4', 'v') # MJPEGコーデック
-    video = cv2.VideoWriter(outputpath, fourcc, fps, (int(cap.get(3)), int(cap.get(4))))
-    print(f"画像サイズ: {int(cap.get(3))}x{int(cap.get(4))}, FPS: {fps}")
-
-    # 映像を取得する
-    while True:
-        now = time.time()
-        # 一定時間経過したら新しいファイルに切り替え
-        if now - section_start_time >= section_time*60:
-            video.release()  # 現在の録画ファイルを閉じる
-            file_no += 1
-            section_start_time = now
-            output_file = f"video_{file_no}.mp4"
-            outputpath = os.path.join(output_dir, output_file)
-            video = cv2.VideoWriter(outputpath, fourcc, fps, (int(cap.get(3)), int(cap.get(4))))
-            print(f"新しい録画ファイルに切り替え: {outputpath}")
-        else:
-            # 一定間隔でフレームをキャプチャ
-            if now - last_capture_time >= interval:
-                time_stamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S") # 現在の日時を取得
-                ret, frame = cap.read()  # フレームを読み込む
-                if not ret:
-                    break
-                
-                # OpenCVの画像をPillow形式に変換
-                frame_pil = Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-                # Pillowで日時を描画
-                draw = ImageDraw.Draw(frame_pil)
-                font = ImageFont.truetype(FONT_PATH, 32)  # フォントサイズを指定
-                draw.text((10, 10), time_stamp, font=font, fill=(255, 255, 255))  # 白色で描画
-                # Pillowの画像をOpenCV形式に戻す
-                frame = cv2.cvtColor(np.array(frame_pil), cv2.COLOR_RGB2BGR)
-
-                video.write(frame)  # フレームを録画ファイルに書き込む
-                last_capture_time = now
-
-            else:
-                continue
-        if cv2.waitKey(1) & 0xFF == ord('q'):  # 'q'キーで終了
-            break
-        cv2.imshow('Recording...', frame)  # 映像を表示する
-
-    cap.release()  # カメラを解放
-    cv2.destroyAllWindows()  # ウィンドウを閉じる
-    print(f"録画が完了しました: {outputpath}")
-
-def main():
-    output_dir = "time_lapse_videos"
-    # 解像度を設定（幅と高さ）
-    camera_pixel = [1280, 720]  # 幅x高さ
-    fps = 10
-    section_time = 60  # 指定時間間隔ごとに新しいフォルダに保存(単位:分)
-    # capture_time_lapse(output_dir, fps, section_time, camera_pixel)
-    app = QApplication([])
-    window = Window(fps, section_time, camera_pixel)
-    window.show()
-    app.exec()
-
-
+        """アプリ終了時にリソースを解放"""
+        if self.capture:
+            self.capture.release()
+        self.timer.stop()
+        super().closeEvent(event)
 
 if __name__ == "__main__":
-    main()
+    app = QApplication(sys.argv)
+    window = CameraApp()
+    window.show()
+    sys.exit(app.exec())
